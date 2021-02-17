@@ -2,6 +2,8 @@
 const User = require('../models/User')
 const ErrorResponse = require('../utils/errorResponse')
 
+const sendEmail = require('../utils/sendEmail')
+
 
 
 
@@ -54,8 +56,42 @@ exports.login = async (req, res, next) => {
 
 }
 
-exports.forgotPassword = (req, res, next) => {
-    res.send("forgotPassword Route")
+exports.forgotPassword = async (req, res, next) => {
+    const { email } = req.body;
+
+    try {
+        const user = await User.findOne({ email })
+        if (!user) {
+            return next(new ErrorResponse("Email couldnot be sent"), 404)
+        }
+        const resetToken = user.getResetPasswordToken()
+        await user.save();
+        const resetUrl = `http://localhost:3000/passwordreset/${resetToken}`;
+
+        const message = `<h1> You have requested a new password reset</h1>
+        <p>Please go to this link for reset</p>
+        <a href = ${resetUrl} clicktracking = off>${resetUrl}</a>
+        `
+        try {
+            await sendEmail({
+                to: user.email,
+                subject: "password reset request",
+                text: message
+            });
+
+            res.status(200).json({ success: true, data: "Email send" })
+
+        } catch (err) {
+            user.resetPasswordToken = undefined
+            user.resetPasswordExpire = undefined
+
+            await user.save()
+            return next(new ErrorResponse("Email couldnot be send", 500))
+
+        }
+    } catch (err) {
+        next(err)
+    }
 }
 
 exports.resetPassword = (req, res, next) => {
